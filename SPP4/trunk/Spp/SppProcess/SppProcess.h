@@ -85,7 +85,7 @@ typedef struct _DECODER_DETECT
 // PPM Values (General)
 #define PPM_MIN		96.0  // PPM minimal pulse width (0.5 mSec)
 #define PPM_MAX		288.0 // PPM maximal pulse width (1.5 mSec)
-#define PPM_TRIG	870.0 // PPM inter packet  separator pulse ( = 4.5mSec)
+#define PPM_TRIG	600.0 // PPM inter packet  separator pulse ( = 4.5mSec)
 #define PPM_SEP		95.0  // PPM inter-channel separator pulse  - this is a maximum value that can never occur
 #define PPM_GLITCH	21.0  // Pulses of this size or less are just a glitch
 #define PPM_JITTER	5.0
