@@ -1459,6 +1459,44 @@ inline UINT CSppProcess::NormalizePulse(UINT Length)
     datacount++;
     return;
 }
+
+class CJitterFilter
+{
+public:
+    CJitterFilter()
+    {
+        for (int i = 0; i < PrevWidthCount; ++i)
+            m_PrevWidths[i] = 0;
+    }
+
+    int AdjustPulseWidth(int width)
+    {
+        // Calculate average of most recent widhts inside jitter window
+        int widthSum = width;
+        int widthCount = 1;
+        for (int i = 0; i < PrevWidthCount; ++i)
+        {
+            if (abs(m_PrevWidths[i] - width) >= PPM_JITTER)
+                break;
+
+            widthSum += m_PrevWidths[i];
+            ++widthCount;
+        }
+        width = (widthSum + widthCount / 2) / widthCount; // average with rounding
+
+        // Add new width on top of the history
+        for (int i = 1; i < PrevWidthCount; ++i)
+            m_PrevWidths[i] = m_PrevWidths[i - 1];
+        m_PrevWidths[0] = width;
+
+        return width;
+    }
+
+private:
+    static const int PrevWidthCount = 3;
+    int m_PrevWidths[PrevWidthCount];
+};
+
  void  CSppProcess::ProcessPulseJrPpm(int width, BOOL input)
 {
     static int sync = 0;
@@ -1469,8 +1507,7 @@ inline UINT CSppProcess::NormalizePulse(UINT Length)
     static int former_sync = 0;
     char tbuffer [11];
     static int i = 0;
-    static int PrevWidth[14];	/* array of previous width values */
-
+    static CJitterFilter jitterFilter[14]; /* for jitter cancellation */
 
     if (width < 5)
         return;
@@ -1498,11 +1535,7 @@ inline UINT CSppProcess::NormalizePulse(UINT Length)
 
     if (!sync) return; /* still waiting for sync */
 
-    // Cancel jitter /* Version 3.3.3 */
-    if (abs(PrevWidth[datacount] - width) < PPM_JITTER)
-        width = PrevWidth[datacount];
-    PrevWidth[datacount] = width;
-
+    width = jitterFilter[datacount].AdjustPulseWidth(width);
 
     /* convert pulse width in samples to joystick position values (newdata)
     joystick position of 0 correspond to width over 100 samples (2.25mSec)
