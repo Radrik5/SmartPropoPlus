@@ -1459,6 +1459,45 @@ inline UINT CSppProcess::NormalizePulse(UINT Length)
     datacount++;
     return;
 }
+
+class CJitterFilter
+{
+public:
+    int AdjustValue(int value)
+    {
+        // Modified Moving Average with differnet ALPHAs
+        //
+        // Generic formula:
+        //   <out> = ((ALPHA - 1) * <out> + <in>) / ALPHA
+        //
+        // The closer new value to previous value the higher should be ALPHA to remove jitter
+        // The farther new value from previous value the lower should be ALPHA to be responsive
+
+        // static const double ALPHA[] = { 8, 6, 4, 3, 2 }; // good but with small jitter
+        static const double ALPHA[] = { 16, 12, 6, 3, 2 };
+
+        const int diff = abs(m_prevValue - value);
+        const int index = min(max(diff - 1, 0), _countof(ALPHA) - 1);
+
+        m_average = ((ALPHA[index] - 1) * m_average + value) / ALPHA[index];
+
+        // Go to new value only if the average is farther than 0.75 from the previous value
+        // This is done to remove jitter between 10 and 11 when average is around 10.5
+        // The average needs to go above 10.75 to switch from 10 to 11
+        // and it needs to go below 10.25 to switch from 11 to 10
+        const double avgDiff = m_average - m_prevValue;
+
+        const int sign = avgDiff < 0 ? -1 : 1;
+        m_prevValue += sign * static_cast<int>(fabs(avgDiff) + 0.25);
+
+        return m_prevValue;
+    }
+
+private:
+    int m_prevValue = 0;
+    double m_average = 0;
+};
+
  void  CSppProcess::ProcessPulseJrPpm(int width, BOOL input)
 {
     static int sync = 0;
@@ -1469,8 +1508,7 @@ inline UINT CSppProcess::NormalizePulse(UINT Length)
     static int former_sync = 0;
     char tbuffer [11];
     static int i = 0;
-    static int PrevWidth[14];	/* array of previous width values */
-
+    static CJitterFilter jitterFilter[14]; /* for jitter cancellation */
 
     if (width < 5)
         return;
@@ -1498,11 +1536,7 @@ inline UINT CSppProcess::NormalizePulse(UINT Length)
 
     if (!sync) return; /* still waiting for sync */
 
-    // Cancel jitter /* Version 3.3.3 */
-    if (abs(PrevWidth[datacount] - width) < PPM_JITTER)
-        width = PrevWidth[datacount];
-    PrevWidth[datacount] = width;
-
+    width = jitterFilter[datacount].AdjustValue(width);
 
     /* convert pulse width in samples to joystick position values (newdata)
     joystick position of 0 correspond to width over 100 samples (2.25mSec)
